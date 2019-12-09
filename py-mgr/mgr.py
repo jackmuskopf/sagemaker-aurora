@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from time import sleep
 import logging
 import yaml
 import argparse
@@ -50,6 +51,11 @@ class InfraMgr:
                             nargs='?',
                             const=True, default=False,
                             help="Use configuration file args or default args")
+
+        parser.add_argument('--watch', 
+                            nargs='?',
+                            const=True, default=False,
+                            help="Show statuses after start or stop")
 
         return parser.parse_args()
 
@@ -180,16 +186,16 @@ class InfraMgr:
                 break
 
         if cluster is None:
-            raise Exception("Cluster not found: {}".format(cluster_name))
+            raise Exception("Cluster not found: {}".format(cluster_identifier))
 
-        return cluster['Status']
+        return cluster['Status'].lower()
 
     @classmethod
     def get_sgmkr_notebook_status(cls, instance_name):
         session = cls.get_session()
         sgmkr = session.client('sagemaker')
         instance = sgmkr.describe_notebook_instance(NotebookInstanceName=instance_name)
-        return instance['NotebookInstanceStatus']
+        return instance['NotebookInstanceStatus'].lower()
 
 
     @classmethod
@@ -206,13 +212,19 @@ class InfraMgr:
         try:
 
             rds_status = cls.get_rds_cluster_status(cluster_name)
-            if rds_status.lower() not in [ 'stopped', 'stopping' ]:
+            if rds_status not in [ 'stopped', 'stopping' ]:
+                cls.logger.info("executing stop command to {}".format(cluster_name))
                 rds.stop_db_cluster(
                     DBClusterIdentifier=cluster_name
                 )
                 rds_status = cls.get_rds_cluster_status(cluster_name)
+            
+            while cls.get_command_line_args().watch and rds_status != 'stopped':
+                sleep(3)
+                rds_status = cls.get_sgmkr_notebook_status(cluster_name)
+                cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
 
-            cls.logger.info("cluster {} is {}".format(cluster_name, rds_status.lower()))
+            cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
         except Exception as e:
             cls.logger.error("Failed to stop cluster: {} \n[{}] {}".format(cluster_name, type(e), e))
 
@@ -223,12 +235,15 @@ class InfraMgr:
 
         try:
             sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
-            if sgmkr_status.lower() not in ['stopped', 'stopping']: 
+            if sgmkr_status not in ['stopped', 'stopping']: 
+                cls.logger.info("executing stop command to {}".format(sgmkr_name))
                 response = sgmkr.stop_notebook_instance(
                     NotebookInstanceName=sgmkr_name
                 )
+            while cls.get_command_line_args().watch and sgmkr_status != 'stopped':
+                sleep(3)
                 sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
-            cls.logger.info("Notebook instance {} is {}".format(sgmkr_name, sgmkr_status.lower()))
+                cls.logger.info("Notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
         except Exception as e:
             cls.logger.error("Failed to stop sagemaker notebook: {} \n[{}] {}".format(sgmkr_name, type(e), e))
 
@@ -247,13 +262,18 @@ class InfraMgr:
         try:
 
             rds_status = cls.get_rds_cluster_status(cluster_name)
-            if rds_status.lower() in [ 'stopped' ]:
+            if rds_status in [ 'stopped' ]:
                 rds.start_db_cluster(
                     DBClusterIdentifier=cluster_name
                 )
                 rds_status = cls.get_rds_cluster_status(cluster_name)
 
-            cls.logger.info("cluster {} is {}".format(cluster_name, rds_status.lower()))
+            while cls.get_command_line_args().watch and rds_status != 'available':
+                sleep(3)
+                rds_status = cls.get_sgmkr_notebook_status(cluster_name)
+                cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
+
+            cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
         except Exception as e:
             cls.logger.error("Failed to start cluster: {} \n[{}] {}".format(cluster_name, type(e), e))
 
@@ -264,12 +284,19 @@ class InfraMgr:
 
         try:
             sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
-            if sgmkr_status.lower() in ['stopped']: 
+            if sgmkr_status in ['stopped']: 
                 response = sgmkr.start_notebook_instance(
                     NotebookInstanceName=sgmkr_name
                 )
+
                 sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
-            cls.logger.info("notebook instance {} is {}".format(sgmkr_name, sgmkr_status.lower()))
+
+            while cls.get_command_line_args().watch and sgmkr_status != 'inservice':
+                sleep(3)
+                sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
+                cls.logger.info("Notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
+
+            cls.logger.info("notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
         except Exception as e:
             cls.logger.error("Failed to start sagemaker notebook: {} \n[{}] {}".format(sgmkr_name, type(e), e))
 

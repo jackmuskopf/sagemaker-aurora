@@ -10,10 +10,10 @@ apply:
 	terraform apply
 
 start:
-	${PYTHON_CMD} py-mgr/mgr.py start
+	${PYTHON_CMD} py-mgr/mgr.py start --watch
 
 stop:
-	${PYTHON_CMD} py-mgr/mgr.py stop
+	${PYTHON_CMD} py-mgr/mgr.py stop --watch
 
 output:
 	terraform output
