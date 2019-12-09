@@ -245,6 +245,8 @@ class InfraMgr:
                     sleep(3)
                     sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
                     cls.logger.info("notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
+
+                cls.logger.info("notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
             except Exception as e:
                 cls.logger.error("failed to stop sagemaker notebook: {} \n[{}] {}".format(sgmkr_name, type(e), e))
 
