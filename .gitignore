@@ -1,0 +1,5 @@
+__pycache__
+.terraform
+configuration.yaml
+backend.tf
+locals.tf
