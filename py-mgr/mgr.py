@@ -6,6 +6,8 @@ import argparse
 import boto3
 import json
 
+from multiprocessing import Process
+
 from run_cmd import run_cmd
 from hcl import HCLBlock
 
@@ -167,7 +169,7 @@ class InfraMgr:
         cls.logger.debug(json.dumps(res))
 
         if res['exit_code'] != 0:
-            cls.logger.error("Failed to get {} from Terraform outputs".format(name))
+            cls.logger.error("failed to get {} from Terraform outputs".format(name))
             return None
 
         try:
@@ -203,49 +205,51 @@ class InfraMgr:
 
         session = cls.get_session()
 
-        rds_instance_ids = cls.get_tf_output('rds_instance_ids')
-
         cluster_name = cls.get_tf_output('rds_cluster_name')
 
         rds = session.client('rds')
-
-        try:
-
-            rds_status = cls.get_rds_cluster_status(cluster_name)
-            if rds_status not in [ 'stopped', 'stopping' ]:
-                cls.logger.info("executing stop command to {}".format(cluster_name))
-                rds.stop_db_cluster(
-                    DBClusterIdentifier=cluster_name
-                )
-                rds_status = cls.get_rds_cluster_status(cluster_name)
-            
-            while cls.get_command_line_args().watch and rds_status != 'stopped':
-                sleep(3)
-                rds_status = cls.get_sgmkr_notebook_status(cluster_name)
-                cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
-
-            cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
-        except Exception as e:
-            cls.logger.error("Failed to stop cluster: {} \n[{}] {}".format(cluster_name, type(e), e))
-
 
         sgmkr_name = cls.get_tf_output('sgmkr_name')
 
         sgmkr = session.client('sagemaker')
 
-        try:
-            sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
-            if sgmkr_status not in ['stopped', 'stopping']: 
-                cls.logger.info("executing stop command to {}".format(sgmkr_name))
-                response = sgmkr.stop_notebook_instance(
-                    NotebookInstanceName=sgmkr_name
-                )
-            while cls.get_command_line_args().watch and sgmkr_status != 'stopped':
-                sleep(3)
+        def stop_cluster():
+            try:
+
+                rds_status = cls.get_rds_cluster_status(cluster_name)
+                if rds_status not in [ 'stopped', 'stopping' ]:
+                    cls.logger.info("executing stop command to {}".format(cluster_name))
+                    rds.stop_db_cluster(
+                        DBClusterIdentifier=cluster_name
+                    )
+                    rds_status = cls.get_rds_cluster_status(cluster_name)
+                
+                while cls.get_command_line_args().watch and rds_status != 'stopped':
+                    sleep(3)
+                    rds_status = cls.get_rds_cluster_status(cluster_name)
+                    cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
+
+                cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
+            except Exception as e:
+                cls.logger.error("failed to stop cluster: {} \n[{}] {}".format(cluster_name, type(e), e))
+
+        def stop_sagemaker():
+            try:
                 sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
-                cls.logger.info("Notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
-        except Exception as e:
-            cls.logger.error("Failed to stop sagemaker notebook: {} \n[{}] {}".format(sgmkr_name, type(e), e))
+                if sgmkr_status not in ['stopped', 'stopping']: 
+                    cls.logger.info("executing stop command to {}".format(sgmkr_name))
+                    sgmkr.stop_notebook_instance(
+                        NotebookInstanceName=sgmkr_name
+                    )
+                while cls.get_command_line_args().watch and sgmkr_status != 'stopped':
+                    sleep(3)
+                    sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
+                    cls.logger.info("notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
+            except Exception as e:
+                cls.logger.error("failed to stop sagemaker notebook: {} \n[{}] {}".format(sgmkr_name, type(e), e))
+
+        for process in [Process(target=stop_cluster), Process(target=stop_sagemaker)]:
+            process.start()
 
 
     @classmethod
@@ -253,52 +257,54 @@ class InfraMgr:
 
         session = cls.get_session()
 
-        rds_instance_ids = cls.get_tf_output('rds_instance_ids')
-
         cluster_name = cls.get_tf_output('rds_cluster_name')
 
         rds = session.client('rds')
-
-        try:
-
-            rds_status = cls.get_rds_cluster_status(cluster_name)
-            if rds_status in [ 'stopped' ]:
-                rds.start_db_cluster(
-                    DBClusterIdentifier=cluster_name
-                )
-                rds_status = cls.get_rds_cluster_status(cluster_name)
-
-            while cls.get_command_line_args().watch and rds_status != 'available':
-                sleep(3)
-                rds_status = cls.get_sgmkr_notebook_status(cluster_name)
-                cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
-
-            cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
-        except Exception as e:
-            cls.logger.error("Failed to start cluster: {} \n[{}] {}".format(cluster_name, type(e), e))
-
 
         sgmkr_name = cls.get_tf_output('sgmkr_name')
 
         sgmkr = session.client('sagemaker')
 
-        try:
-            sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
-            if sgmkr_status in ['stopped']: 
-                response = sgmkr.start_notebook_instance(
-                    NotebookInstanceName=sgmkr_name
-                )
+        def start_cluster():
+            try:
 
+                rds_status = cls.get_rds_cluster_status(cluster_name)
+                if rds_status in [ 'stopped' ]:
+                    rds.start_db_cluster(
+                        DBClusterIdentifier=cluster_name
+                    )
+                    rds_status = cls.get_rds_cluster_status(cluster_name)
+
+                while cls.get_command_line_args().watch and rds_status != 'available':
+                    sleep(3)
+                    rds_status = cls.get_rds_cluster_status(cluster_name)
+                    cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
+
+                cls.logger.info("cluster {} is {}".format(cluster_name, rds_status))
+            except Exception as e:
+                cls.logger.error("failed to start cluster: {} \n[{}] {}".format(cluster_name, type(e), e))
+
+        def start_sagemaker():
+            try:
                 sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
+                if sgmkr_status in ['stopped']: 
+                    sgmkr.start_notebook_instance(
+                        NotebookInstanceName=sgmkr_name
+                    )
 
-            while cls.get_command_line_args().watch and sgmkr_status != 'inservice':
-                sleep(3)
-                sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
-                cls.logger.info("Notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
+                    sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
 
-            cls.logger.info("notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
-        except Exception as e:
-            cls.logger.error("Failed to start sagemaker notebook: {} \n[{}] {}".format(sgmkr_name, type(e), e))
+                while cls.get_command_line_args().watch and sgmkr_status != 'inservice':
+                    sleep(3)
+                    sgmkr_status = cls.get_sgmkr_notebook_status(sgmkr_name)
+                    cls.logger.info("notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
+
+                cls.logger.info("notebook instance {} is {}".format(sgmkr_name, sgmkr_status))
+            except Exception as e:
+                cls.logger.error("failed to start sagemaker notebook: {} \n[{}] {}".format(sgmkr_name, type(e), e))
+
+        for process in [Process(target=start_cluster), Process(target=start_sagemaker)]:
+            process.start()
 
 
     
