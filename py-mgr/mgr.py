@@ -28,7 +28,8 @@ class InfraMgr:
         'aws_profile' : 'default',
         'state_bucket' : None,
         'state_key' : None,
-        'aws_region' : 'us-east-1',
+        'state_bucket_region' : None,
+        'aws_region' : None,
         'app_name' : 'aurora-sgmkr',
         'stage' : 'develop',
         'vpc_id' : None,
@@ -126,7 +127,7 @@ class InfraMgr:
                         Attributes=dict(
                             bucket=args['state_bucket'],
                             key=args['state_key'],
-                            region=args['aws_region'],
+                            region=args['state_bucket_region'],
                             profile=args['aws_profile']
                             )
                         )
