@@ -1,4 +1,4 @@
-PYTHON_CMD=python
+PYTHON_CMD=/usr/local/bin/python3
 
 setup:
 	${PYTHON_CMD} py-mgr/mgr.py setup
